@@ -1,0 +1,48 @@
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*Zone.Identifier
+
+# Julia specific
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+Manifest.toml
+LocalPreferences.toml
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+
+# Local environments
+julia_depot/
+
+# Package-specific generated outputs
+exports/
+*.stl
+*.svg
+web_meta.json
+
+# Repository-generated outputs
+vtk_results/*
+!vtk_results/.gitignore
+web_viewer/public/data/*
+!web_viewer/public/data/.gitignore
+web_viewer/public/confluence/*
+!web_viewer/public/confluence/.gitignore
+web_viewer/public/sphere/*
+!web_viewer/public/sphere/.gitignore
+web_viewer/public/metric_ball/*
+!web_viewer/public/metric_ball/.gitignore
+web_viewer/public/slice/*
+!web_viewer/public/slice/.gitignore
+web_viewer/public/research/*
+!web_viewer/public/research/.gitignore
+analysis/*
+!analysis/.gitignore
