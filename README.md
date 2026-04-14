@@ -1,5 +1,7 @@
 # RandomFieldGeometry.jl
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19582531.svg)](https://doi.org/10.5281/zenodo.19582531)
+
 `RandomFieldGeometry.jl` is a Julia package for generating random fields such as Gaussian free fields and log-correlated random fields, studying random geometry and related metric structures, and exporting or visualizing the resulting objects.
 
 [![Live Demo](https://img.shields.io/badge/Live_Demo-aub.ie%2Flfpp3d-blue.svg)](https://aub.ie/lfpp3d)
@@ -40,17 +42,18 @@ One striking feature suggested by these simulations is geodesic confluence in 3D
 
 ## Citation
 
-If you use `RandomFieldGeometry.jl` in research or course materials, please cite the repository directly until a formal paper is available:
+If you use `RandomFieldGeometry.jl` in research or course materials, please cite the Zenodo archive:
 
-> Park, M. (2026). *RandomFieldGeometry.jl: A Julia package for random-field geometry and visualization*. GitHub repository.
+> Park, M. (2026). *RandomFieldGeometry.jl*. Zenodo. [https://doi.org/10.5281/zenodo.19582531](https://doi.org/10.5281/zenodo.19582531)
 
 ```bibtex
-@misc{Park_RandomFieldGeometry_2026,
+@software{Park_RandomFieldGeometry_2026,
   author = {Park, Minjae},
-  title = {RandomFieldGeometry.jl: A Julia package for random-field geometry and visualization},
+  title = {RandomFieldGeometry.jl},
   year = {2026},
-  publisher = {GitHub},
-  journal = {GitHub repository}
+  publisher = {Zenodo},
+  doi = {10.5281/zenodo.19582531},
+  url = {https://doi.org/10.5281/zenodo.19582531}
 }
 ```
 
