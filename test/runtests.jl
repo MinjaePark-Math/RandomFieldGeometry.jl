@@ -1,9 +1,12 @@
 using Test
 using KernelAbstractions
+using Random
 using RandomFieldGeometry
 
 @testset "RandomFieldGeometry.jl" begin
     @test size(dirichlet_gff(2, 8, 123)) == (7, 7)
+    @test eltype(dirichlet_gff(2, 8, 123; T=Float64)) === Float64
+    @test dirichlet_gff(2, 8, 0; rng=Xoshiro(123), T=Float32) ≈ dirichlet_gff(2, 8, 0; rng=Xoshiro(123), T=Float32)
     @test size(dirichlet_lgf(3, 6, 123)) == (5, 5, 5)
 
     weights2d = fill(1.0f0, 5, 5)
@@ -81,6 +84,140 @@ using RandomFieldGeometry
     @test size(sim2d.weights) == (15, 15)
     @test size(sim3d.distances) == (9, 9, 9)
     @test size(sim3d.weights) == (9, 9, 9)
+
+    ig = sample_chordal_square_ig_field(33, 2.0f0; seed=321)
+    @test size(ig.values) == (33, 33)
+    @test size(ig.random) == size(ig.values)
+    @test size(ig.deterministic) == size(ig.values)
+    @test ig.random .+ ig.deterministic ≈ ig.values
+    @test ig.constants.lambda ≈ Float32(pi / sqrt(2))
+    @test ig.constants.critical_angle ≈ Float32(pi)
+    @test ig.boundary_mode === :zero_force
+
+    zero_boundary = square_chordal_boundary_data(33, 2.0f0; boundary_mode=:zero_boundary)
+    zero_force = square_chordal_boundary_data(33, 2.0f0; boundary_mode=:zero_force)
+    mid = cld(size(zero_boundary, 1), 2)
+    @test zero_boundary[mid, 1] ≈ 0.0f0
+    @test zero_force[mid, 1] ≈ zero_boundary[mid, 1]
+    @test zero_boundary[1, mid] ≈ -ig.constants.chi * Float32(pi / 2)
+    @test zero_boundary[end, mid] ≈ ig.constants.chi * Float32(pi / 2)
+    @test zero_force[1, mid] - zero_boundary[1, mid] ≈ -ig.constants.lambda
+    @test zero_force[end, mid] - zero_boundary[end, mid] ≈ ig.constants.lambda
+
+    ig_zero_boundary = sample_chordal_square_ig_field(33, 2.0f0; boundary_mode=:zero_boundary, seed=321)
+    @test ig_zero_boundary.boundary_mode === :zero_boundary
+    @test ig_zero_boundary.random .+ ig_zero_boundary.deterministic ≈ ig_zero_boundary.values
+
+    ig_seed = boundary_seed(ig.domain, :south; fraction=0.5, inset_steps=1.5)
+    ig_flow = flowline_field(ig)
+    ig_multiscale = multiscale_flowline_field(ig; levels=4, min_cutoff=4)
+    ig_multiscale_oversampled = multiscale_flowline_field(
+        ig;
+        levels=4,
+        min_cutoff=4,
+        spectral_oversample=2,
+        extension_seed=11,
+    )
+    ig_trace = trace_flowline(
+        ig_flow,
+        ig_seed;
+        angle=0.0f0,
+        ds=0.05f0 * ig.domain.hx,
+        max_steps=6000,
+        integrator=:euler,
+        boundary_margin=0.0f0,
+        stop_when=(z, _, _) -> imag(z) > 0.7f0,
+    )
+    @test length(ig_trace.points) > 10
+    @test ig_trace.termination in (:boundary, :stop_condition, :max_steps, :target)
+    @test sum(abs.(diff(ig_trace.points))) / max(abs(last(ig_trace.points) - first(ig_trace.points)), 1f-6) > 1.5f0
+
+    ig_default_trace = trace_flowline(
+        ig,
+        ig_seed;
+        ds=0.05f0 * ig.domain.hx,
+        integrator=:euler,
+        boundary_margin=0.0f0,
+    )
+    @test length(ig_default_trace.points) > 10
+    @test ig_default_trace.termination in (:target, :boundary, :max_steps)
+    if ig_default_trace.termination === :target
+        @test abs(last(ig_default_trace.points) - ig_flow.goal) <= max(1.5f0 * ig_flow.goal_radius, 2.1f0 * ig.domain.hx)
+    end
+    @test length(ig_multiscale.levels) >= 2
+    @test last(ig_multiscale.cutoffs) == ig.domain.n - 2
+    @test ig_multiscale_oversampled.domain.n == 2 * (ig.domain.n - 1) + 1
+
+    ig_multiscale_trace = trace_flowline(
+        ig_multiscale,
+        ig_seed;
+        angle=0.0f0,
+        max_steps=1500,
+    )
+    @test length(ig_multiscale_trace.points) > 10
+    @test ig_multiscale_trace.termination in (:boundary, :max_steps, :multiscale_fallback, :stalled)
+
+    ig_multiscale_oversampled_trace = trace_flowline(
+        ig_multiscale_oversampled,
+        ig_seed;
+        angle=0.0f0,
+        max_steps=1500,
+    )
+    @test length(ig_multiscale_oversampled_trace.points) > 10
+    @test ig_multiscale_oversampled_trace.termination in (:boundary, :max_steps, :multiscale_fallback, :stalled)
+
+    ig_multiscale_fan = trace_angle_fan(
+        ig_multiscale,
+        ig_seed,
+        (-0.2f0, 0.0f0, 0.2f0);
+        max_steps=1500,
+    )
+    @test length(ig_multiscale_fan) == 3
+
+    ig_multiscale_fan_field = trace_angle_fan(
+        ig,
+        ig_seed,
+        (-0.2f0, 0.0f0, 0.2f0);
+        multiscale=true,
+        levels=4,
+        min_cutoff=4,
+        max_steps=1500,
+    )
+    @test length(ig_multiscale_fan_field) == 3
+
+    ig_fan = trace_angle_fan(
+        ig,
+        ig_seed,
+        (-0.2f0, 0.0f0, 0.2f0);
+        ds=0.05f0 * ig.domain.hx,
+        max_steps=1500,
+        boundary_margin=0.0f0,
+    )
+    @test length(ig_fan) == 3
+
+    ig64 = sample_chordal_square_ig_field(33, 2.0; seed=321, T=Float64)
+    sle_ds = 0.05 * ig64.domain.hx
+    sle_fan = trace_sle_fan(ig64; angles=(0.0,), ds=sle_ds, boundary_margin=0.0, max_steps=nothing)
+    @test length(sle_fan.traces) == 1
+    @test sle_fan.seed ≈ complex(0.0, ig64.domain.ymin + sle_ds)
+    @test sle_fan.traces[1].termination in (:target, :boundary, :max_steps)
+
+    square = square_domain(33; T=Float32)
+    constant_flow = flowline_field(zeros(Float32, 33, 33), square, 1.0f0)
+
+    fan = trace_angle_fan(
+        constant_flow,
+        0.0f0 + 0.0f0im,
+        (-Float32(pi) / 4, 0.0f0, Float32(pi) / 4);
+        ds=0.5f0 * square.hx,
+        max_steps=400,
+        boundary_margin=0.0f0,
+    )
+    @test length(fan) == 3
+    @test all(length(trace.points) > 5 for trace in fan)
+    @test imag(fan[2].points[2] - fan[2].points[1]) > 0
+    @test real(fan[1].points[2] - fan[1].points[1]) > 0
+    @test real(fan[3].points[2] - fan[3].points[1]) < 0
 
     mktempdir() do tmp
         export_web_binary(distances3d, 3; path_step=2, mesh_downscale=2, dir=tmp)

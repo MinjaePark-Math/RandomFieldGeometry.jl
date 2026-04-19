@@ -7,6 +7,8 @@ using RandomFieldGeometry
 
 const _exports = RandomFieldGeometry.Exporters
 const _analysis = RandomFieldGeometry.AnalysisTools
+const _flowlines = RandomFieldGeometry.Flowlines
+const _fields = RandomFieldGeometry.RandomFieldGenerators
 
 _transparent() = RGBAf(0f0, 0f0, 0f0, 0f0)
 
@@ -34,6 +36,62 @@ end
 
 _point3f(point::NTuple{3,<:Real}) = Point3f(Float32(point[1]), Float32(point[2]), Float32(point[3]))
 _point2f(point::NTuple{2,<:Real}) = Point2f(Float32(point[1]), Float32(point[2]))
+
+function _decimated_complex_points(points; max_points::Union{Nothing,Integer}=nothing)
+    if isnothing(max_points)
+        return points
+    end
+    n = length(points)
+    limit = Int(max_points)
+    if limit <= 0 || n <= limit
+        return points
+    elseif limit == 1
+        return [points[1]]
+    end
+
+    total = 0.0
+    prev = points[1]
+    @inbounds for k in 2:n
+        z = points[k]
+        total += abs(z - prev)
+        prev = z
+    end
+
+    if !(isfinite(total)) || total <= eps(Float64)
+        return [points[1], points[end]]
+    end
+
+    out = Vector{eltype(points)}()
+    sizehint!(out, limit)
+    push!(out, points[1])
+    spacing = total / (limit - 1)
+    next_s = spacing
+    accum = 0.0
+    prev = points[1]
+
+    @inbounds for k in 2:n
+        z = points[k]
+        seg = abs(z - prev)
+        while seg > 0 && accum + seg >= next_s && length(out) < limit - 1
+            t = (next_s - accum) / seg
+            push!(out, prev + t * (z - prev))
+            next_s += spacing
+        end
+        accum += seg
+        prev = z
+    end
+
+    if isempty(out) || abs(out[end] - points[end]) > eps(Float64)
+        push!(out, points[end])
+    end
+    return out
+end
+
+function _flowline_rgba(idx::Int, total::Int, angle::Real, alpha::Float32)
+    hue = total <= 1 ? Float32(mod(angle / (2pi), 1)) : Float32((idx - 1) / max(total, 1))
+    color = RGB(HSV(360f0 * hue, 0.92f0, 1.0f0))
+    return RGBAf(Float32(red(color)), Float32(green(color)), Float32(blue(color)), alpha)
+end
 
 function _path_rgba_from_distance_and_weight(
     valid_dists,
@@ -493,6 +551,104 @@ function RandomFieldGeometry.slice_viewer(
         colorrange=(0.0f0, boundary_cap),
         nan_color=RGBAf(0f0, 0f0, 0f0, 0f0),
     )
+
+    display(fig)
+    return fig
+end
+
+
+function RandomFieldGeometry.plot_flowlines(
+    field::RandomFieldGeometry.IGField,
+    result::NamedTuple;
+    kwargs...,
+)
+    if haskey(result, :traces)
+        return RandomFieldGeometry.plot_flowlines(field, result.traces; kwargs...)
+    elseif haskey(result, :path)
+        return RandomFieldGeometry.plot_flowlines(field, result.path; kwargs...)
+    end
+
+    throw(ArgumentError("the result must have `:traces` or `:path`."))
+end
+
+function RandomFieldGeometry.plot_flowlines(
+    field::RandomFieldGeometry.IGField,
+    trace::_flowlines.FlowlineTrace;
+    kwargs...,
+)
+    return RandomFieldGeometry.plot_flowlines(field, [trace]; kwargs...)
+end
+
+function RandomFieldGeometry.plot_flowlines(
+    field::RandomFieldGeometry.IGField,
+    traces::AbstractVector{<:_flowlines.FlowlineTrace};
+    show_field::Bool=true,
+    show_seeds::Bool=true,
+    field_colormap=:balance,
+    field_alpha::Real=0.92,
+    line_alpha::Real=0.95,
+    linewidth::Real=2.2,
+    line_color=nothing,
+    figure_size::Tuple{<:Integer,<:Integer}=(900, 900),
+    fontsize::Integer=16,
+    xlimits::Union{Nothing,Tuple{<:Real,<:Real}}=nothing,
+    ylimits::Union{Nothing,Tuple{<:Real,<:Real}}=nothing,
+    title::Union{Nothing,AbstractString}=nothing,
+    max_plot_points::Union{Nothing,Integer}=nothing,
+)
+    xs, ys = _fields.domain_coordinates(field.domain)
+    fig = Figure(size=figure_size, fontsize=fontsize, backgroundcolor=:black)
+    ax = Axis(
+        fig[1, 1];
+        aspect=DataAspect(),
+        xlabel="Re z",
+        ylabel="Im z",
+        title=isnothing(title) ? "Imaginary Geometry Flowlines" : String(title),
+        backgroundcolor=:black,
+        xlabelcolor=:white,
+        ylabelcolor=:white,
+        xticklabelcolor=:white,
+        yticklabelcolor=:white,
+        xtickcolor=:white,
+        ytickcolor=:white,
+        xgridcolor=RGBAf(1f0, 1f0, 1f0, 0.08f0),
+        ygridcolor=RGBAf(1f0, 1f0, 1f0, 0.08f0),
+        leftspinecolor=:white,
+        rightspinecolor=:white,
+        topspinecolor=:white,
+        bottomspinecolor=:white,
+        titlecolor=:white,
+    )
+
+    if show_field
+        heatmap!(ax, xs, ys, field.values'; colormap=field_colormap, alpha=Float32(field_alpha))
+    end
+
+    !isnothing(xlimits) && xlims!(ax, xlimits...)
+    !isnothing(ylimits) && ylims!(ax, ylimits...)
+
+    total = max(length(traces), 1)
+    same_angle_family = total > 1 && all(trace -> abs(trace.angle - traces[1].angle) <= 1f-5, traces)
+    single_color = RGBAf(1.0f0, 0.95f0, 0.18f0, Float32(line_alpha))
+    for (idx, trace) in enumerate(traces)
+        isempty(trace.points) && continue
+        display_points = _decimated_complex_points(trace.points; max_points=max_plot_points)
+        pts = Point2f[_point2f((real(z), imag(z))) for z in display_points]
+        color = if !isnothing(line_color)
+            line_color
+        elseif total == 1
+            single_color
+        elseif same_angle_family
+            RGBAf(0.22f0, 1.0f0, 0.78f0, Float32(line_alpha))
+        else
+            _flowline_rgba(idx, total, trace.angle, Float32(line_alpha))
+        end
+        lines!(ax, pts, color=color, linewidth=linewidth)
+
+        if show_seeds
+            scatter!(ax, [first(pts)], color=color, markersize=9)
+        end
+    end
 
     display(fig)
     return fig

@@ -3,6 +3,7 @@ module RandomFieldGeometry
 using KernelAbstractions
 
 include("RandomFieldGenerators.jl")
+include("Flowlines.jl")
 include("Pathfinders.jl")
 include("Geodesics.jl")
 include("Exporters.jl")
@@ -15,13 +16,20 @@ using .Geodesics
 using .Pathfinders
 using .RandomFieldGenerators
 using .ResearchExports
+using .Flowlines
 
-export check_optimal_N, cuda_backend, default_backend, describe_backend, metal_backend, run_lfpp_simulation, run_liouville_simulation
+export check_optimal_N, cuda_backend, default_backend, describe_backend, metal_backend, run_lfpp_simulation
 export dirichlet_fgf, dirichlet_gff, dirichlet_lgf
 export estimate_ball_growth_dimension, estimate_geodesic_dimension, estimate_shell_growth_exponent
 export export_confluence_web, export_metric_ball_web, export_sphere_web, export_slice_web, export_vtk, export_web_binary
-export geodesic_edge_weights, interactive_viewer, metric_ball_mask, metric_shell_mask, sample_distance_points
+export geodesic_edge_weights, interactive_viewer, metric_ball_mask, metric_shell_mask, plot_flowlines, sample_distance_points
 export confluence_viewer, metric_ball_viewer, slice_viewer, solve_fpp, sphere_viewer, trace_all_geodesics, trace_path
+export IGConstants, IGField, SquareDomain
+export FlowlineField, FlowlineTrace, MultiscaleFlowlineField
+export add_interior_singularity!, boundary_seed, domain_coordinates
+export flowline_field, ig_constants, ig_critical_angle, multiscale_flowline_field, sample_chordal_square_ig_field, sample_interior_ig_field
+export square_chordal_boundary_data, square_domain, square_seed_grid
+export trace_angle_fan, trace_flowline, trace_sle_fan
 
 const VERSION = v"0.1.0"
 
@@ -125,29 +133,32 @@ function run_lfpp_simulation(
     return (distances=solve_result, weights=weights)
 end
 
-function run_liouville_simulation(args...; kwargs...)
-    Base.depwarn("`run_liouville_simulation` is deprecated; use `run_lfpp_simulation` instead.", :run_liouville_simulation)
-    return run_lfpp_simulation(args...; kwargs...)
+function _require_makie_extension(name::AbstractString)
+    error("`$name` lives in the optional GLMakie extension. Install `GLMakie`, `GeometryBasics`, and `Colors`, load them, and call `$name` again.")
 end
 
 function interactive_viewer(args...; kwargs...)
-    error("`interactive_viewer` lives in the optional GLMakie extension. Install `GLMakie`, `GeometryBasics`, and `Colors`, load them, and call `interactive_viewer` again.")
+    _require_makie_extension("interactive_viewer")
 end
 
 function confluence_viewer(args...; kwargs...)
-    error("`confluence_viewer` lives in the optional GLMakie extension. Install `GLMakie`, `GeometryBasics`, and `Colors`, load them, and call `confluence_viewer` again.")
+    _require_makie_extension("confluence_viewer")
 end
 
 function metric_ball_viewer(args...; kwargs...)
-    error("`metric_ball_viewer` lives in the optional GLMakie extension. Install `GLMakie`, `GeometryBasics`, and `Colors`, load them, and call `metric_ball_viewer` again.")
+    _require_makie_extension("metric_ball_viewer")
 end
 
 function slice_viewer(args...; kwargs...)
-    error("`slice_viewer` lives in the optional GLMakie extension. Install `GLMakie`, `GeometryBasics`, and `Colors`, load them, and call `slice_viewer` again.")
+    _require_makie_extension("slice_viewer")
 end
 
 function sphere_viewer(args...; kwargs...)
-    error("`sphere_viewer` lives in the optional GLMakie extension. Install `GLMakie`, `GeometryBasics`, and `Colors`, load them, and call `sphere_viewer` again.")
+    _require_makie_extension("sphere_viewer")
+end
+
+function plot_flowlines(args...; kwargs...)
+    _require_makie_extension("plot_flowlines")
 end
 
 end

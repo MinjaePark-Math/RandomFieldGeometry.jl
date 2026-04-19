@@ -30,6 +30,7 @@ exports/
 web_meta.json
 
 # Repository-generated outputs
+example_output
 vtk_results/*
 !vtk_results/.gitignore
 web_viewer/public/data/*
@@ -46,3 +47,4 @@ web_viewer/public/research/*
 !web_viewer/public/research/.gitignore
 analysis/*
 !analysis/.gitignore
+resources
