@@ -40,12 +40,14 @@ RFG = _load_local_rfg!()
 
 try
     @eval using CairoMakie
+    @eval using GLMakie
     @eval using Colors
 catch err
-    error("These scripts require CairoMakie and Colors. Install them with: import Pkg; Pkg.add([\"CairoMakie\", \"Colors\"])")
+    error("These scripts require CairoMakie, GLMakie, and Colors. Install them with: import Pkg; Pkg.add([\"CairoMakie\", \"GLMakie\", \"Colors\"])")
 end
 
 CM = CairoMakie
+GM = GLMakie
 
 function parse_cli_args(args)
     opts = Dict{String,String}()
@@ -165,7 +167,7 @@ function build_trace_config(opts::Dict{String,String}, domain)
     _push_if_some!(pairs, :join_factor, maybe_real(opts, "join_factor"))
     push!(pairs, :boundary_margin => get(opts, "boundary_margin", nothing) === nothing ? 0.0 * h : parse_real_expr(opts["boundary_margin"]))
     push!(pairs, :integrator => get(opts, "integrator", nothing) === nothing ? :euler : parse_symbol_text(opts["integrator"]))
-    push!(pairs, :goal_capture_steps => get(opts, "goal_capture_steps", nothing) === nothing ? 0.1 : parse_real_expr(opts["goal_capture_steps"]))
+    push!(pairs, :goal_capture_steps => get(opts, "goal_capture_steps", nothing) === nothing ? 2 : parse_real_expr(opts["goal_capture_steps"]))
     _push_if_some!(pairs, :adaptive_stuck_steps, maybe_int(opts, "adaptive_stuck_steps"))
     _push_if_some!(pairs, :adaptive_stuck_growth, maybe_real(opts, "adaptive_stuck_growth"))
     _push_if_some!(pairs, :adaptive_max_scale, maybe_real(opts, "adaptive_max_scale"))
@@ -203,7 +205,7 @@ end
 
 function compact_trace_summary(; output, terminations, ds, ds_over_h, attempts, retried)
     return (
-        output=abspath(String(output)),
+        output=isnothing(output) ? nothing : abspath(String(output)),
         terminations=terminations,
         ds=ds,
         ds_over_h=ds_over_h,
@@ -337,4 +339,13 @@ function save_ig_figure(fig, output::AbstractString)
     CM.save(path, fig)
     println("saved: ", path)
     return path
+end
+
+function show_ig_figure(fig)
+    # The figure itself is backend-agnostic; activate GLMakie so scripts open an
+    # interactive native window instead of only saving a raster image.
+    GM.activate!()
+    display(GM.Screen(), fig)
+    println("displaying figure with GLMakie")
+    return fig
 end

@@ -552,6 +552,16 @@ end
     return _has_goal(flow) && abs(z - flow.goal) <= capture_radius
 end
 
+function _append_goal_capture_segment!(
+    points::Vector{Complex{T}},
+    flow::FlowlineField{T},
+    ztip::Complex{T},
+) where {T<:AbstractFloat}
+    push!(points, ztip)
+    points[end] == flow.goal || push!(points, flow.goal)
+    return nothing
+end
+
 @inline function _adaptive_step_update(
     z::Complex{T},
     anchor::Complex{T},
@@ -598,10 +608,6 @@ end
     return complex(clamp(real(z), xmin, xmax), clamp(imag(z), ymin, ymax))
 end
 
-@inline function _active_goal_target(flow::FlowlineField{T}, margin::T) where {T<:AbstractFloat}
-    return _clamp_to_active_box(flow.domain, flow.goal, margin)
-end
-
 @inline function _box_boundary_tolerance(domain::RandomFieldGenerators.SquareDomain{T}) where {T<:AbstractFloat}
     scale = max(abs(domain.xmin), abs(domain.xmax), abs(domain.ymin), abs(domain.ymax), one(T))
     return max(T(16) * eps(T) * scale, sqrt(eps(T)) * min(domain.hx, domain.hy))
@@ -639,10 +645,6 @@ end
 end
 
 @inline function _fallback_motion_target(flow::FlowlineField{T}, margin::T) where {T<:AbstractFloat}
-    if _has_goal(flow)
-        return _active_goal_target(flow, margin)
-    end
-
     xmin, xmax, ymin, ymax = _active_bounds(flow.domain, margin)
     return complex((xmin + xmax) / T(2), (ymin + ymax) / T(2))
 end
@@ -679,101 +681,6 @@ end
     return x <= xmin + tol || x >= xmax - tol || y <= ymin + tol || y >= ymax - tol
 end
 
-@inline function _target_boundary_direction(
-    flow::FlowlineField{T},
-    z::Complex{T},
-    margin::T,
-) where {T<:AbstractFloat}
-    _has_goal(flow) || return zero(Complex{T})
-
-    domain = flow.domain
-    xmin, xmax, ymin, ymax = _active_bounds(domain, margin)
-    tol = _box_boundary_tolerance(domain)
-    x = clamp(real(z), xmin, xmax)
-    y = clamp(imag(z), ymin, ymax)
-    target = _active_goal_target(flow, margin)
-    tx = real(target)
-    ty = imag(target)
-
-    on_left = x <= xmin + tol
-    on_right = x >= xmax - tol
-    on_bottom = y <= ymin + tol
-    on_top = y >= ymax - tol
-    if !(on_left || on_right || on_bottom || on_top)
-        return zero(Complex{T})
-    end
-
-    dx = zero(T)
-    dy = zero(T)
-
-    # On the top edge the target is the north marked point.  Move horizontally
-    # toward it; if the target is slightly inside the active box, move inward
-    # once the horizontal coordinate is already aligned.
-    if on_top
-        if abs(tx - x) > tol
-            dx = sign(tx - x)
-        elseif abs(ty - y) > tol
-            dy = sign(ty - y)
-        end
-    # On either vertical side, move monotonically upward toward the north edge.
-    elseif on_left || on_right
-        if abs(ty - y) > tol
-            dy = sign(ty - y)
-        elseif abs(tx - x) > tol
-            dx = sign(tx - x)
-        end
-    # On the bottom edge, move toward the vertical line through the target; if
-    # already aligned, move inward/upward.
-    elseif on_bottom
-        if abs(tx - x) > tol
-            dx = sign(tx - x)
-        elseif abs(ty - y) > tol
-            dy = sign(ty - y)
-        end
-    end
-
-    return _project_to_box_tangent_cone(domain, complex(x, y), complex(dx, dy), margin)
-end
-
-@inline function _target_boundary_step(
-    flow::FlowlineField{T},
-    z::Complex{T},
-    ds::T,
-    margin::T,
-) where {T<:AbstractFloat}
-    anchor = _clamp_to_active_box(flow.domain, z, margin)
-    if _has_goal(flow)
-        active_target = _active_goal_target(flow, margin)
-        tol = _box_boundary_tolerance(flow.domain)
-        if abs(anchor - active_target) <= ds + tol
-            return active_target
-        end
-    end
-
-    v = _target_boundary_direction(flow, anchor, margin)
-    if v == 0
-        v = _project_to_box_tangent_cone(flow.domain, anchor, _fallback_motion_target(flow, margin) - anchor, margin)
-    end
-    if v == 0
-        v = _inward_box_normal(flow.domain, anchor, margin)
-    end
-    v == 0 && return anchor
-
-    trial = _clamp_to_active_box(flow.domain, anchor + ds * v, margin)
-    if _has_goal(flow)
-        active_target = _active_goal_target(flow, margin)
-        # Avoid one-step overshoot jitter around the active target.  Without
-        # this snap, very large max_steps can spend millions of steps alternating
-        # around the top midpoint and the plotted curve becomes dominated by
-        # this meaningless terminal chatter.
-        if abs(trial - active_target) <= ds + _box_boundary_tolerance(flow.domain)
-            return active_target
-        end
-    end
-
-    return trial
-end
-
 function _unstall_clamped_step(
     flow::FlowlineField{T},
     z::Complex{T},
@@ -784,25 +691,14 @@ function _unstall_clamped_step(
 ) where {T<:AbstractFloat}
     # First try the actual local direction, but projected to the tangent cone of
     # the active square.  If the attempted motion is exactly outward normal, use
-    # a deterministic fallback tangent/inward direction so the trace keeps
-    # moving instead of reporting `:stalled`.
+    # a deterministic fallback inward direction so the trace keeps moving
+    # instead of reporting `:stalled`.
     v = _direction(flow, z, angle_offset, phase_interpolation)
     projected = _project_to_box_tangent_cone(flow.domain, z, v, margin)
-
-    if _on_active_boundary(flow.domain, z, margin)
-        target_projected = _target_boundary_direction(flow, z, margin)
-        if target_projected != 0 && (projected == 0 || real(projected * conj(target_projected)) <= T(0.05))
-            projected = target_projected
-        end
-    end
 
     if projected == 0
         target = _fallback_motion_target(flow, margin)
         projected = _project_to_box_tangent_cone(flow.domain, z, target - z, margin)
-    end
-
-    if projected == 0
-        projected = _target_boundary_direction(flow, z, margin)
     end
 
     if projected == 0
@@ -821,24 +717,13 @@ function _handle_boundary_exit!(
     margin::T,
 ) where {T<:AbstractFloat}
     if RandomFieldGenerators._inside_domain(flow.domain, znew; margin=margin)
-        if _on_active_boundary(flow.domain, z, margin)
-            raw = _normalize_or_zero(znew - z)
-            projected = _project_to_box_tangent_cone(flow.domain, z, raw, margin)
-            target_projected = _target_boundary_direction(flow, z, margin)
-            if target_projected != 0 && (projected == 0 || real(projected * conj(target_projected)) <= T(0.05))
-                return _target_boundary_step(flow, z, ds, margin), nothing
-            end
-        end
         return znew, nothing
     end
 
-    # Single boundary rule: clamp to the active square.  For chordal square
-    # fields, the clamped boundary dynamics are target-seeking: once a numerical
-    # trajectory reaches a side boundary, it follows the boundary tangent toward
-    # the north marked point (+i) instead of drifting away or stalling.
+    # Single boundary rule: clamp to the active square and let subsequent steps
+    # follow the projected local direction field naturally.
     clamped = _clamp_to_active_box(flow.domain, znew, margin)
-    next = _has_goal(flow) ? _target_boundary_step(flow, clamped, ds, margin) : clamped
-    return next, nothing
+    return clamped, nothing
 end
 
 function _trace_flowline_impl(
@@ -887,13 +772,25 @@ function _trace_flowline_impl(
         if znew == z
             znew = _unstall_clamped_step(flow, z, phase_angle, current_ds, margin, phase_interpolation)
         end
-        if _goal_reached(flow, znew) || _goal_captured(flow, znew, capture_radius)
-            push!(points, znew)
+        reached_goal = _goal_reached(flow, znew)
+        captured_goal = !reached_goal && _goal_captured(flow, znew, capture_radius)
+        if reached_goal || captured_goal
+            if captured_goal
+                _append_goal_capture_segment!(points, flow, znew)
+            else
+                push!(points, znew)
+            end
             return FlowlineTrace(points, seed, angle, :target, 0)
         end
         znew, boundary_status = _handle_boundary_exit!(flow, z, znew, current_ds, margin)
-        if _goal_reached(flow, znew) || _goal_captured(flow, znew, capture_radius)
-            push!(points, znew)
+        reached_goal = _goal_reached(flow, znew)
+        captured_goal = !reached_goal && _goal_captured(flow, znew, capture_radius)
+        if reached_goal || captured_goal
+            if captured_goal
+                _append_goal_capture_segment!(points, flow, znew)
+            else
+                push!(points, znew)
+            end
             return FlowlineTrace(points, seed, angle, :target, 0)
         end
         if boundary_status !== nothing
@@ -936,11 +833,9 @@ Trace a single discrete mesh-regularized imaginary-geometry proxy curve on a
 square.
 
 Boundary behavior is intentionally not configurable.  Each finite-step overshoot
-is clamped back into the active square.  For chordal square fields, boundary
-motion is target-seeking: side-boundary contact follows the boundary tangent
-toward the north marked point `+i`, and the top boundary moves horizontally
-toward that target.  The trace continues until it reaches the chordal target,
-hits a custom stop condition, or exhausts `max_steps`.
+is clamped back into the active square, after which subsequent motion follows
+the projected local direction field.  The trace continues until it reaches the
+chordal target, hits a custom stop condition, or exhausts `max_steps`.
 """
 function trace_flowline(
     flow::FlowlineField{T},

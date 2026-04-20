@@ -21,6 +21,7 @@ At present, the main implemented workflow focuses on first-passage percolation (
 The package also includes a square-domain imaginary-geometry workflow based on the Miller-Sheffield flow-line formalism. The current maintained path is the chordal square fan:
 
 - `sample_chordal_square_ig_field` for efficient square Dirichlet IG fields,
+- `free_square_gff` for efficient free-boundary square GFF samples (using a mean-zero convention),
 - `trace_flowline`, `trace_angle_fan`, and `trace_sle_fan` for proxy path tracing on top of those sampled fields,
 - and `plot_flowlines` for quick 2D Makie visualization when Makie is available.
 
@@ -118,6 +119,14 @@ using RandomFieldGeometry
 
 sim = run_lfpp_simulation(128, 0.8f0; dim=2)
 interactive_viewer(sim.distances; path_step=8)
+```
+
+For a free-boundary square GFF sample:
+
+```julia
+using RandomFieldGeometry
+
+h = free_square_gff(257, 20260420; T=Float64)
 ```
 
 The scripts in [examples](examples/) provide minimal entry points for Makie viewing, ParaView export, and the maintained square-domain IG fan demo:

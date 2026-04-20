@@ -8,6 +8,15 @@ using RandomFieldGeometry
     @test eltype(dirichlet_gff(2, 8, 123; T=Float64)) === Float64
     @test dirichlet_gff(2, 8, 0; rng=Xoshiro(123), T=Float32) ≈ dirichlet_gff(2, 8, 0; rng=Xoshiro(123), T=Float32)
     @test size(dirichlet_lgf(3, 6, 123)) == (5, 5, 5)
+    @test size(free_gff(2, 8, 123)) == (8, 8)
+    @test eltype(free_gff(2, 8, 123; T=Float64)) === Float64
+    @test free_gff(2, 8, 0; rng=Xoshiro(123), T=Float32) ≈ free_gff(2, 8, 0; rng=Xoshiro(123), T=Float32)
+    @test size(free_lgf(3, 6, 123)) == (6, 6, 6)
+
+    free_square = free_square_gff(9, 321; T=Float32)
+    @test free_square ≈ free_gff(2, 9, 321; T=Float32)
+    @test abs(sum(free_square)) ≤ 5f-5
+    @test maximum(abs.(free_square)) > 0f0
 
     weights2d = fill(1.0f0, 5, 5)
     distances2d = solve_fpp(weights2d; backend=KernelAbstractions.CPU())
@@ -204,6 +213,36 @@ using RandomFieldGeometry
 
     square = square_domain(33; T=Float32)
     constant_flow = flowline_field(zeros(Float32, 33, 33), square, 1.0f0)
+    snap_goal = complex(0.0f0, square.ymax)
+    snap_flow = FlowlineField(zeros(Float32, 33, 33), 1.0f0, snap_goal, 0.05f0 * square.hx, square)
+    snap_ds = 0.6f0 * square.hx
+    snap_seed = complex(0.0f0, square.ymax - 2.5f0 * snap_ds)
+    snap_trace = trace_flowline(
+        snap_flow,
+        snap_seed;
+        angle=0.0f0,
+        ds=snap_ds,
+        max_steps=10,
+        boundary_margin=0.0f0,
+        goal_capture_steps=nothing,
+    )
+    @test snap_trace.termination === :target
+    @test length(snap_trace.points) >= 4
+    @test snap_trace.points[end - 1] != snap_goal
+    @test abs(snap_trace.points[end - 1] - snap_goal) <= snap_ds
+    @test last(snap_trace.points) == snap_goal
+
+    top_start = complex(0.25f0, square.ymax)
+    top_overshoot = top_start + 0.4f0 * snap_ds * im
+    clamped_top, boundary_status = RandomFieldGeometry.Flowlines._handle_boundary_exit!(
+        snap_flow,
+        top_start,
+        top_overshoot,
+        snap_ds,
+        0.0f0,
+    )
+    @test boundary_status === nothing
+    @test clamped_top == top_start
 
     fan = trace_angle_fan(
         constant_flow,

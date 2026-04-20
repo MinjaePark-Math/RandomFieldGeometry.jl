@@ -38,8 +38,10 @@ function main(args=ARGS)
         show_seeds=parse_bool(get_opt(opts, "show_seeds", "true"), true),
         max_points_per_trace=max_plot_points)
 
-    output = get_opt(opts, "output", "example_output/imaginary_geometry/fan/sle_fan.png")
-    save_ig_figure(fig, output)
+    show_ig_figure(fig)
+    output = nothing
+    # output = get_opt(opts, "output", "example_output/imaginary_geometry/fan/sle_fan.png")
+    # save_ig_figure(fig, output)
     return compact_trace_summary(
         output=output,
         terminations=terminations,

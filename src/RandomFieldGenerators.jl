@@ -9,6 +9,7 @@ export add_interior_singularity!, boundary_seed, domain_coordinates, ig_constant
 export sample_chordal_square_ig_field, sample_interior_ig_field, square_chordal_boundary_data
 export square_domain, square_seed_grid
 export dirichlet_fgf, dirichlet_gff, dirichlet_lgf
+export free_fgf, free_gff, free_lgf, free_square_gff
 
 include("RandomFieldGenerators/DirichletFields.jl")
 include("RandomFieldGenerators/ImaginaryGeometryFields.jl")

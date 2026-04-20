@@ -20,6 +20,7 @@ using .Flowlines
 
 export check_optimal_N, cuda_backend, default_backend, describe_backend, metal_backend, run_lfpp_simulation
 export dirichlet_fgf, dirichlet_gff, dirichlet_lgf
+export free_fgf, free_gff, free_lgf, free_square_gff
 export estimate_ball_growth_dimension, estimate_geodesic_dimension, estimate_shell_growth_exponent
 export export_confluence_web, export_metric_ball_web, export_sphere_web, export_slice_web, export_vtk, export_web_binary
 export geodesic_edge_weights, interactive_viewer, metric_ball_mask, metric_shell_mask, plot_flowlines, sample_distance_points
